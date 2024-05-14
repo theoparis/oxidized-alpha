@@ -1,0 +1,10 @@
+[package]
+name = "mc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+irox-bits = { version = "0.1.0", default-features = false, features = ["alloc"] }
+snafu = { version = "0.8.2", default-features = false, features = ["unstable-core-error"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
