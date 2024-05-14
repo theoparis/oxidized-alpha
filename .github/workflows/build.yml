@@ -8,6 +8,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
       - run: cargo test --all-features
 
   lint:
@@ -17,6 +19,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt,clippy
+          toolchain: nightly
       - name: Check formatting
         uses: actions-rust-lang/rustfmt@v1
       - name: Clippy
