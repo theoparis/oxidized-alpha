@@ -1,4 +1,9 @@
 #![deny(warnings)]
+
+use irox_bits::{Bits, MutBits};
+use miniz_oxide::deflate::compress_to_vec_zlib;
+use oxidized_alpha::{packets, Chunk, Player};
+use snafu::{ensure, Snafu};
 use std::{
 	io::{Read, Write},
 	net::{TcpListener, TcpStream},
@@ -7,10 +12,6 @@ use std::{
 		Arc, Mutex,
 	},
 };
-
-use irox_bits::{Bits, MutBits};
-use oxidized_alpha::{packets, Player};
-use snafu::{ensure, Snafu};
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
@@ -80,8 +81,38 @@ impl<'a, Handle: Read + Write> PacketSerializer<'a, Handle> {
 		self.read_str_sized_lossy(length as usize)
 	}
 
-	pub fn write_chunk(&mut self) -> Result<(), irox_bits::Error> {
-		// Write chunk header packet
+	pub fn write_chunk(
+		&mut self,
+		chunk: Chunk,
+	) -> Result<(), irox_bits::Error> {
+		self.write_u8(packets::PRE_CHUNK)?;
+		self.write_be_i32(chunk.x)?;
+		self.write_be_i32(chunk.z)?;
+		self.write_u8(0x01)?;
+
+		let x = chunk.x * 16;
+		let y = 0i16;
+		let z = chunk.z * 16;
+
+		let mut to_compress = chunk.blocks.clone();
+		to_compress.extend_from_slice(&chunk.data);
+		to_compress.extend_from_slice(&chunk.block_light);
+		to_compress.extend_from_slice(&chunk.sky_light);
+
+		let compressed = compress_to_vec_zlib(&to_compress, 6);
+
+		// Send map chunk packet
+		self.write_u8(packets::MAP_CHUNK)?;
+		self.write_be_i32(x)?;
+		self.write_be_i16(y)?;
+		self.write_be_i32(z)?;
+
+		self.write_u8(15)?;
+		self.write_u8(127)?;
+		self.write_u8(15)?;
+
+		self.write_be_i32(compressed.len() as i32)?;
+		self.write_all_bytes(&compressed)?;
 
 		Ok(())
 	}
@@ -97,10 +128,7 @@ fn handle_client(
 		if let Ok(packet_id) = stream.read_u8() {
 			match packet_id {
 				packets::KEEP_ALIVE => {
-					ensure!(
-						stream.write_u8(0).is_ok(),
-						WriteKeepAlivePacketSnafu
-					);
+					stream.write_u8(0)?;
 				}
 				packets::LOGIN => {
 					// Read login request packet
@@ -123,19 +151,49 @@ fn handle_client(
 					let entity_id =
 						ENTITY_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-					// Send login response
+					// Send login response packet
+					stream.write_u8(packets::LOGIN)?;
 					stream.write_be_i32(entity_id)?;
-
 					// Two unused/empty strings
 					stream.write_be_u16(0)?;
 					stream.write_be_u16(0)?;
-
 					stream.write_be_u64(map_seed)?;
+					stream.write_u8(dimension)?;
 
 					players.push(Player {
 						username,
 						logged_in: true,
 					});
+
+					let mut initial_chunk = Chunk {
+						x: 1,
+						z: 1,
+						..Default::default()
+					};
+
+					for _i in 0..16 {
+						for _k in 0..16 {
+							for _j in 0..128 {
+								initial_chunk.blocks.push(0);
+								initial_chunk.data.push(0);
+								initial_chunk.block_light.push(15);
+								initial_chunk.sky_light.push(15);
+							}
+						}
+					}
+
+					assert_eq!(initial_chunk.blocks.len(), 16 * 128 * 16);
+
+					stream.write_chunk(initial_chunk)?;
+					tracing::debug!("Wrote map data");
+
+					// Write spawn position packet
+					stream.write_u8(packets::SPAWN_POSITION)?;
+					stream.write_be_i32(0)?;
+					stream.write_be_i32(80)?;
+					stream.write_be_i32(0)?;
+
+					tracing::debug!("Wrote spawn position");
 				}
 				packets::HANDSHAKE => {
 					let username = stream.read_string()?;

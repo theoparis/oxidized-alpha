@@ -10,7 +10,7 @@ pub struct Player {
 	pub logged_in: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Chunk {
 	pub x: i32,
 	pub z: i32,
@@ -18,7 +18,6 @@ pub struct Chunk {
 	pub data: Vec<u8>,
 	pub sky_light: Vec<u8>,
 	pub block_light: Vec<u8>,
-	pub height_map: Vec<u8>,
 }
 
 pub mod packets {
