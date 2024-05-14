@@ -8,6 +8,13 @@ use alloc::{string::String, vec::Vec};
 pub struct Player {
 	pub username: String,
 	pub logged_in: bool,
+	pub x: f64,
+	pub y: f64,
+	pub z: f64,
+	pub yaw: f32,
+	pub pitch: f32,
+	pub stance: f64,
+	pub on_ground: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]

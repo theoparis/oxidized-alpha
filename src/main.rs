@@ -124,6 +124,8 @@ fn handle_client(
 	stream: &mut PacketSerializer<TcpStream>,
 	players: &mut Vec<Player>,
 ) -> Result<()> {
+	let mut username: Option<String> = None;
+
 	loop {
 		if let Ok(packet_id) = stream.read_u8() {
 			match packet_id {
@@ -138,7 +140,7 @@ fn handle_client(
 					tracing::debug!("protocol version: {}", protocol_version);
 					ensure!(protocol_version == 3, InvalidProtocolVersionSnafu);
 
-					let username = stream.read_string()?;
+					username = Some(stream.read_string()?);
 					let _password = stream.read_string()?;
 
 					let map_seed = stream.read_be_u64()?;
@@ -160,10 +162,20 @@ fn handle_client(
 					stream.write_be_u64(map_seed)?;
 					stream.write_u8(dimension)?;
 
-					players.push(Player {
-						username,
-						logged_in: true,
-					});
+					let player = Player {
+						username: username.clone().unwrap(),
+						logged_in: false,
+						x: 0.0,
+						y: 80.0,
+						z: 0.0,
+						yaw: 0.0,
+						pitch: 0.0,
+						stance: 81.6,
+						on_ground: true,
+					};
+					players.push(player.clone());
+					let player_index = players.len() - 1;
+					let player = players.get_mut(player_index).unwrap();
 
 					let mut initial_chunk = Chunk {
 						x: 1,
@@ -189,11 +201,57 @@ fn handle_client(
 
 					// Write spawn position packet
 					stream.write_u8(packets::SPAWN_POSITION)?;
-					stream.write_be_i32(0)?;
-					stream.write_be_i32(80)?;
-					stream.write_be_i32(0)?;
+					stream.write_be_i32(player.x as i32)?;
+					stream.write_be_i32(player.y as i32)?;
+					stream.write_be_i32(player.z as i32)?;
 
 					tracing::debug!("Wrote spawn position");
+
+					// Write position and look packet
+					stream.write_u8(packets::PLAYER_POSITION_AND_LOOK)?;
+					stream.write_f64(player.x)?;
+					stream.write_f64(player.stance)?;
+					stream.write_f64(player.y)?;
+					stream.write_f64(player.z)?;
+					stream.write_f32(player.yaw)?;
+					stream.write_f32(player.pitch)?;
+					stream.write_u8(player.on_ground as u8)?;
+
+					tracing::debug!("Wrote player rotation and position");
+					player.logged_in = true;
+				}
+				packets::PLAYER_POSITION_AND_LOOK => {
+					if let Some(player) = players.iter_mut().find(|player| {
+						player.username == username.clone().unwrap()
+					}) {
+						player.x = stream.read_f64()?;
+						player.stance = stream.read_f64()?;
+						player.y = stream.read_f64()?;
+						player.z = stream.read_f64()?;
+						player.yaw = stream.read_f32()?;
+						player.pitch = stream.read_f32()?;
+						player.on_ground = stream.read_u8()? == 1;
+					}
+				}
+				packets::PLAYER_POSITION => {
+					if let Some(player) = players.iter_mut().find(|player| {
+						player.username == username.clone().unwrap()
+					}) {
+						player.x = stream.read_f64()?;
+						player.y = stream.read_f64()?;
+						player.stance = stream.read_f64()?;
+						player.z = stream.read_f64()?;
+						player.on_ground = stream.read_u8()? == 1;
+					}
+				}
+				packets::PLAYER_LOOK => {
+					if let Some(player) = players.iter_mut().find(|player| {
+						player.username == username.clone().unwrap()
+					}) {
+						player.yaw = stream.read_f32()?;
+						player.pitch = stream.read_f32()?;
+						player.on_ground = stream.read_u8()? == 1;
+					}
 				}
 				packets::HANDSHAKE => {
 					let username = stream.read_string()?;
@@ -211,10 +269,14 @@ fn handle_client(
 				packets::PLAYER => {
 					let on_ground = stream.read_u8()? == 1;
 
-					tracing::debug!("on_ground: {on_ground}");
+					if let Some(player) = players.iter_mut().find(|player| {
+						player.username == username.clone().unwrap()
+					}) {
+						player.on_ground = on_ground;
+					}
 				}
 				_ => {
-					tracing::debug!("unknown packet: {:#04x}", packet_id);
+					tracing::error!("unknown packet: {:#04x}", packet_id);
 				}
 			}
 		}
