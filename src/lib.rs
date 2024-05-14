@@ -1,5 +1,32 @@
 #![no_std]
 
+extern crate alloc;
+
+use alloc::{string::String, vec::Vec};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Player {
+	pub username: String,
+	pub logged_in: bool,
+	pub x: f64,
+	pub y: f64,
+	pub z: f64,
+	pub yaw: f32,
+	pub pitch: f32,
+	pub stance: f64,
+	pub on_ground: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Chunk {
+	pub x: i32,
+	pub z: i32,
+	pub blocks: Vec<u8>,
+	pub data: Vec<u8>,
+	pub sky_light: Vec<u8>,
+	pub block_light: Vec<u8>,
+}
+
 pub mod packets {
 	pub const KEEP_ALIVE: u8 = 0x00;
 	pub const LOGIN: u8 = 0x01;
